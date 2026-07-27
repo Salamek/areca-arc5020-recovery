@@ -1,5 +1,7 @@
 # Areca ARC-5020 recovery tools
 
+[![CI](https://github.com/Salamek/areca-arc5020-recovery/actions/workflows/ci.yml/badge.svg)](https://github.com/Salamek/areca-arc5020-recovery/actions/workflows/ci.yml)
+
 Experimental Linux tools for inspecting and reconstructing member disks from
 an Areca ARC-5020 external RAID enclosure.
 
