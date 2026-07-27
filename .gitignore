@@ -1,0 +1,48 @@
+# Private/local notes and credentials
+PRIVATE_NOTES.md
+.env
+.env.*
+!.env.example
+
+# Raw member captures may contain residual user data and are very large
+samples/
+
+# Vendor firmware and locally derived firmware artifacts
+ARC5020_Firmware/
+ARC5020_Firmware.zip
+ARC5020FIRM.BIN.png
+
+# Reconstructed disks and forensic working images
+*.img
+*.raw
+*.dd
+*.e01
+*.E01
+recovered*
+
+# Packet captures and local diagnostic output
+*.pcap
+*.pcapng
+*.log
+logs/
+
+# Python caches, test caches, and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
