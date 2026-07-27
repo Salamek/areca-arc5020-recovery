@@ -128,3 +128,11 @@ RAID3, and RAID5.
 Raw member captures and downloaded firmware are excluded from Git because they
 are large, potentially contain residual user data, and may not be
 redistributable.
+
+## License
+
+Copyright (C) 2026 ARC-5020 recovery contributors.
+
+This project is free software licensed under the
+[GNU General Public License version 3 or later](LICENSE). It is distributed
+without any warranty; see the license for details.
