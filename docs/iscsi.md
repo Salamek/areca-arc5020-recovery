@@ -30,11 +30,10 @@ iqn.2000-01.com.abc.xyz:group-08
 Discover and log in with:
 
 ```bash
-iscsiadm -m discovery -t sendtargets -p 192.168.1.235
-iscsiadm -m node \
-  -T iqn.2000-01.com.abc.xyz:group-08 \
-  -p 192.168.1.235:3260 \
-  --login
+sudo ./areca_iscsi_discover.sh 192.168.1.235:3260
+sudo ./areca_iscsi.sh \
+  iqn.2000-01.com.abc.xyz:group-08 \
+  192.168.1.235:3260
 ```
 
 Adapt the IP address and base IQN to your enclosure.
@@ -91,7 +90,9 @@ Log out normally:
 
 ```bash
 iscsiadm -m session
-iscsiadm -m session --logout
+sudo ./areca_iscsi_logout.sh \
+  iqn.2000-01.com.abc.xyz:group-08 \
+  192.168.1.235:3260
 ```
 
 If a powered-down target leaves a stale local SCSI disk, first verify that it

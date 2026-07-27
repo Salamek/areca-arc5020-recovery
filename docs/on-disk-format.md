@@ -46,11 +46,11 @@ Candidate fields under active verification are:
 | `+0x2f` | byte | host drive mapping |
 | `+0x33` | byte | zero-based Volume Set index |
 
-For the tested two-volume RAID1 sample, the physical start formula is
+For all tested two-volume layouts, the physical start formula is
 `520 + allocation_offset * 512` member sectors. Distinct 16 MiB patterns
-written through the two iSCSI LUNs were found exactly at member LBAs 520 and
-1,953,800. Placement for multi-volume striped/parity arrays is not yet
-verified.
+written through separate iSCSI LUNs were found at the predicted locations.
+The striped/parity tests established that row numbering restarts at each
+Volume Set. RAID5 rotating parity also restarts from its initial member.
 
 Observed RAID-level codes:
 

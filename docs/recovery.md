@@ -11,7 +11,8 @@ For new workflows, prefer the auto-detecting universal CLI:
 ./areca_raid.py reconstruct recovered.img member0 member2 member3
 ```
 
-For a multi-volume RAID1 member, select a Volume Set by index or exact name:
+For any supported multi-volume member set, select a Volume Set by index or
+exact name:
 
 ```bash
 ./areca_raid.py inspect --volume MULTI-VOL-B member0
@@ -123,6 +124,25 @@ Scan a member capture for encoded logical-LBA runs:
 
 ```bash
 ./raid_pattern.py scan member.img --offset 266240 --bytes 64MiB
+```
+
+Verify a RAID3 dedicated-parity member against the deterministic pattern:
+
+```bash
+./raid_pattern.py verify-raid3-parity parity-member \
+  --offset 266240 \
+  --bytes 32KiB \
+  --pattern-lba-base 0
+```
+
+Verify one RAID5 member, including its rotating data/parity roles:
+
+```bash
+./raid_pattern.py verify-raid5-member member0 \
+  --member-index 0 \
+  --offset 266240 \
+  --bytes 512KiB \
+  --pattern-lba-base 0
 ```
 
 ## Verification

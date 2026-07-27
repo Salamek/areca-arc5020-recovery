@@ -1312,9 +1312,9 @@ A two-member RAID1 Raid Set was created with equal-sized Volume Sets named
 - Record byte `+0x2f` held host drives 8/9 and `+0x33` held Volume Set
   indices 0/1.
 
-The library and universal CLI now select multi-volume RAID1 Volume Sets by
-index or exact name. Other RAID levels remain blocked until their
-multi-volume placement is validated.
+The library and universal CLI select multi-volume RAID1 Volume Sets by index
+or exact name. RAID1+0 support was added after the follow-up experiment below;
+other RAID levels remain blocked until validated.
 
 End-to-end reconstruction was then verified from physical member 0:
 
@@ -1325,3 +1325,65 @@ End-to-end reconstruction was then verified from physical member 0:
 
 This validates metadata selection, allocation-offset translation, and logical
 data reads for both Volume Sets independently.
+
+### RAID1+0 follow-up
+
+A four-member RAID1+0 with a 32 KiB stripe was tested with two Volume Sets:
+
+- Volume 0: 1,952,768 logical sectors, allocation value 0;
+- Volume 1: 3,905,536 logical sectors, allocation value 1908;
+- predicted and observed Volume 1 member start: LBA 977,416
+  (byte 500,436,992).
+
+On member 0, each Volume Set began with logical stripes from mirror pair 0/1.
+On member 2, each began with the following stripes from mirror pair 2/3.
+Both streams restarted their RAID1+0 stripe numbering at the selected
+Volume Set's physical start. This validates multi-volume RAID1+0
+reconstruction and direct mapping.
+
+### RAID0 follow-up
+
+A four-member RAID0 with a 64 KiB stripe was tested with two Volume Sets:
+
+- Volume 0: 39,061,504 logical sectors, allocation value 0;
+- Volume 1: 7,811,072 logical sectors, allocation value 19,074;
+- predicted and observed Volume 1 member start: LBA 9,766,408
+  (byte 5,000,400,896).
+
+Distinct 16 MiB patterns were written through both iSCSI LUNs. All four
+physical members showed the expected round-robin stripe order. Both Volume
+Sets restarted at member 0, and both began exactly at their metadata-derived
+physical offsets. This provides hardware validation for simple RAID0 mapping
+and multi-volume RAID0 reconstruction/direct mapping.
+
+### RAID3 follow-up
+
+A four-member RAID3 with its fixed 4 KiB chunk was tested with two Volume
+Sets:
+
+- Volume 0: 1,952,256 logical sectors, allocation value 0;
+- Volume 1: 3,906,048 logical sectors, allocation value 1272;
+- predicted and observed Volume 1 member start: LBA 651,784
+  (byte 333,713,408).
+
+Members 0, 1, and 2 contained the expected ordered data chunks, and each
+Volume Set restarted row numbering at member 0. Member 3's dedicated parity
+was independently verified as the XOR of all three expected data chunks for
+multiple rows at both Volume Set offsets. This validates multi-volume RAID3
+reconstruction, including degraded reads.
+
+### RAID5 follow-up
+
+A four-member RAID5 with a 64 KiB stripe was tested with two Volume Sets:
+
+- Volume 0: 1,952,256 logical sectors, allocation value 0;
+- Volume 1: 3,906,048 logical sectors, allocation value 1272;
+- predicted and observed Volume 1 member start: LBA 651,784
+  (byte 333,713,408).
+
+Distinct 16 MiB patterns were written through both iSCSI LUNs. Every physical
+member was verified for eight rows at each Volume Set offset, covering two
+complete parity rotations. All data chunks and rotating parity chunks matched
+the expected left-symmetric layout. Each Volume Set restarted at RAID5 row
+zero. This validates multi-volume RAID5 reconstruction, including degraded
+reads.

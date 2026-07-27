@@ -204,6 +204,125 @@ def scan_runs(path: str, offset: int, byte_count: int) -> list[tuple[int, int, i
         os.close(fd)
 
 
+def xor_blocks(blocks: list[bytes]) -> bytes:
+    if not blocks:
+        raise PatternError("cannot XOR an empty block list")
+    result = bytearray(blocks[0])
+    if any(len(block) != len(result) for block in blocks):
+        raise PatternError("cannot XOR unequal block lengths")
+    for block in blocks[1:]:
+        for offset, value in enumerate(block):
+            result[offset] ^= value
+    return bytes(result)
+
+
+def verify_raid3_parity(
+    path: str,
+    offset: int,
+    byte_count: int,
+    pattern_lba_base: int,
+    *,
+    data_members: int = 3,
+    chunk_sectors: int = 8,
+) -> None:
+    if offset < 0 or offset % SECTOR_SIZE:
+        raise PatternError("parity offset must be a non-negative multiple of 512")
+    if data_members < 2:
+        raise PatternError("RAID3 requires at least two data members")
+    if chunk_sectors <= 0:
+        raise PatternError("chunk size must be positive")
+    chunk_bytes = chunk_sectors * SECTOR_SIZE
+    if byte_count <= 0 or byte_count % chunk_bytes:
+        raise PatternError("parity length must be a positive multiple of chunk size")
+
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
+    try:
+        if offset + byte_count > size_of(fd):
+            raise PatternError("parity verification range exceeds input size")
+        rows = byte_count // chunk_bytes
+        logical_sectors_per_row = data_members * chunk_sectors
+        for row in range(rows):
+            blocks = []
+            row_lba = pattern_lba_base + row * logical_sectors_per_row
+            for member in range(data_members):
+                first_lba = row_lba + member * chunk_sectors
+                blocks.append(
+                    b"".join(
+                        make_sector(first_lba + sector)
+                        for sector in range(chunk_sectors)
+                    )
+                )
+            expected = xor_blocks(blocks)
+            actual = os.pread(fd, chunk_bytes, offset + row * chunk_bytes)
+            if actual != expected:
+                raise PatternError(f"RAID3 parity mismatch at physical row {row}")
+    finally:
+        os.close(fd)
+
+
+def raid5_row_layout(row: int, member_count: int) -> tuple[int, list[int]]:
+    parity = member_count - 1 - (row % member_count)
+    data = [(parity + step) % member_count for step in range(1, member_count)]
+    return parity, data
+
+
+def verify_raid5_member(
+    path: str,
+    offset: int,
+    byte_count: int,
+    pattern_lba_base: int,
+    member_index: int,
+    *,
+    member_count: int = 4,
+    chunk_sectors: int = 128,
+) -> None:
+    if offset < 0 or offset % SECTOR_SIZE:
+        raise PatternError("member offset must be a non-negative multiple of 512")
+    if member_count < 3:
+        raise PatternError("RAID5 requires at least three members")
+    if member_index not in range(member_count):
+        raise PatternError(f"member index must be in range 0..{member_count - 1}")
+    if chunk_sectors <= 0:
+        raise PatternError("chunk size must be positive")
+    chunk_bytes = chunk_sectors * SECTOR_SIZE
+    if byte_count <= 0 or byte_count % chunk_bytes:
+        raise PatternError("verification length must be a multiple of chunk size")
+
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
+    try:
+        if offset + byte_count > size_of(fd):
+            raise PatternError("RAID5 verification range exceeds input size")
+        data_members = member_count - 1
+        rows = byte_count // chunk_bytes
+        for row in range(rows):
+            parity_index, data_order = raid5_row_layout(row, member_count)
+            data_blocks = []
+            for position in range(data_members):
+                first_lba = (
+                    pattern_lba_base
+                    + (row * data_members + position) * chunk_sectors
+                )
+                data_blocks.append(
+                    b"".join(
+                        make_sector(first_lba + sector)
+                        for sector in range(chunk_sectors)
+                    )
+                )
+            if member_index == parity_index:
+                expected = xor_blocks(data_blocks)
+            else:
+                expected = data_blocks[data_order.index(member_index)]
+            actual = os.pread(fd, chunk_bytes, offset + row * chunk_bytes)
+            if actual != expected:
+                role = "parity" if member_index == parity_index else "data"
+                raise PatternError(
+                    f"RAID5 {role} mismatch at physical row {row}, "
+                    f"member {member_index}"
+                )
+    finally:
+        os.close(fd)
+
+
 def parse_size(value: str) -> int:
     suffixes = {
         "kib": 1024,
@@ -254,6 +373,29 @@ def parser() -> argparse.ArgumentParser:
     scan.add_argument("input")
     scan.add_argument("--offset", type=parse_size, required=True)
     scan.add_argument("--bytes", type=parse_size, required=True)
+
+    parity = commands.add_parser(
+        "verify-raid3-parity",
+        help="verify dedicated parity generated from an LBA pattern",
+    )
+    parity.add_argument("input")
+    parity.add_argument("--offset", type=parse_size, required=True)
+    parity.add_argument("--bytes", type=parse_size, required=True)
+    parity.add_argument("--pattern-lba-base", type=int, default=0)
+    parity.add_argument("--data-members", type=int, default=3)
+    parity.add_argument("--chunk-sectors", type=int, default=8)
+
+    raid5 = commands.add_parser(
+        "verify-raid5-member",
+        help="verify one member's rotating data/parity pattern",
+    )
+    raid5.add_argument("input")
+    raid5.add_argument("--offset", type=parse_size, required=True)
+    raid5.add_argument("--bytes", type=parse_size, required=True)
+    raid5.add_argument("--pattern-lba-base", type=int, default=0)
+    raid5.add_argument("--member-index", type=int, required=True)
+    raid5.add_argument("--member-count", type=int, default=4)
+    raid5.add_argument("--chunk-sectors", type=int, default=128)
     return top
 
 
@@ -285,6 +427,27 @@ def main() -> int:
                 )
             if not runs:
                 print("no valid pattern sectors found")
+        elif args.command == "verify-raid3-parity":
+            verify_raid3_parity(
+                args.input,
+                args.offset,
+                args.bytes,
+                args.pattern_lba_base,
+                data_members=args.data_members,
+                chunk_sectors=args.chunk_sectors,
+            )
+            print("RAID3 parity verified")
+        elif args.command == "verify-raid5-member":
+            verify_raid5_member(
+                args.input,
+                args.offset,
+                args.bytes,
+                args.pattern_lba_base,
+                args.member_index,
+                member_count=args.member_count,
+                chunk_sectors=args.chunk_sectors,
+            )
+            print(f"RAID5 member {args.member_index} verified")
         return 0
     except (OSError, PatternError) as error:
         print(f"error: {error}", file=sys.stderr)

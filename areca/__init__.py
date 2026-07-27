@@ -15,7 +15,7 @@ from .metadata import (
     Volume,
     inspect,
 )
-from .util import parse_size
+from .util import parse_size, parse_volume_selector
 
 __all__ = [
     "DATA_OFFSET_SECTORS",
@@ -28,6 +28,7 @@ __all__ = [
     "inspect",
     "load_member",
     "parse_size",
+    "parse_volume_selector",
     "raid5_row_layout",
     "xor_blocks",
 ]

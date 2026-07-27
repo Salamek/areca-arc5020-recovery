@@ -19,3 +19,8 @@ def parse_size(value: str) -> int:
         if lowered.endswith(suffix):
             return int(lowered[: -len(suffix)]) * multiplier
     return int(value)
+
+
+def parse_volume_selector(value: str) -> int | str:
+    """Parse a CLI Volume Set selector as an index or exact name."""
+    return int(value) if value.isdecimal() else value

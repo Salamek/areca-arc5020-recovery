@@ -85,7 +85,7 @@ Reconstruct to a new image:
 ./areca_raid.py reconstruct recovered.img member0 member2 member3
 ```
 
-Select a Volume Set in a multi-volume RAID1 Raid Set:
+Select a Volume Set in any supported multi-volume Raid Set:
 
 ```bash
 ./areca_raid.py reconstruct recovered-b.img member0 \
@@ -157,11 +157,9 @@ explicitly refused.
 | Three-/four-member RAID3 | All members or one missing |
 | Four-member RAID5 | All members or one missing |
 
-RAID0 metadata detection is experimentally confirmed, while its data mapping
-currently follows the controller's conventional simple striping model and
-synthetic tests. Perform a hardware pattern validation before relying on RAID0
-recovery for irreplaceable data.
+RAID0 metadata and simple round-robin striping were experimentally confirmed
+on all four members using distinct LBA-addressed patterns.
 
-Multiple Volume Sets are currently supported only on RAID1. Packed metadata
-and RAID1 allocation offsets are experimentally verified; multi-volume
-RAID0/RAID1+0/RAID3/RAID5 placement still requires hardware validation.
+Multiple Volume Sets are supported on RAID0, RAID1, RAID1+0, RAID3, and
+RAID5. Packed metadata, allocation offsets, per-volume row restart, dedicated
+RAID3 parity, and rotating RAID5 parity are experimentally verified.

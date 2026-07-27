@@ -133,10 +133,6 @@ class ArecaArray:
         self.chunk_bytes = self.chunk_sectors * SECTOR_SIZE
         self.logical_bytes = selected_volume.bytes
         self.level = self._decode_level(selected_volume.raid_level_code)
-        if len(self.volumes) > 1 and self.level != RaidLevel.RAID1:
-            raise ArecaError(
-                "multiple Volume Sets are currently validated only for RAID1"
-            )
         self._validate_completeness()
 
     @classmethod
@@ -174,7 +170,7 @@ class ArecaArray:
         return matches[0]
 
     def _decode_level(self, code: int) -> RaidLevel:
-        if code == 0:
+        if code == 0 and self.member_count == 4:
             return RaidLevel.RAID0
         if code == 1 and self.member_count == 2:
             return RaidLevel.RAID1
@@ -222,6 +218,8 @@ class ArecaArray:
         available = min(
             member.size - self.data_offset_bytes for member in self.members.values()
         )
+        if available <= 0:
+            return 0
         if self.level == RaidLevel.RAID1:
             logical = available
         elif self.level == RaidLevel.RAID10:

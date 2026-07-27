@@ -16,12 +16,13 @@ is not affiliated with Areca.
 
 ## Status
 
-| Layout | Metadata detection | Reconstruction | One missing member |
+| Layout | Metadata detection | Reconstruction | Degraded input |
 |---|---:|---:|---:|
-| RAID1, 2 members | Yes | Read-only loop mapping | Yes |
-| RAID1+0, 4 members | Yes | Image and read-only device mapper | One member per mirror pair required |
-| RAID3, 3 or 4 members | Yes | Image | Yes |
-| RAID5, 4 members | Yes | Image | Yes |
+| RAID0, 4 members | Yes | Image and device mapper | No |
+| RAID1, 2 members | Yes | Image, loop, and device mapper | One surviving member |
+| RAID1+0, 4 members | Yes | Image and read-only device mapper | One member from each mirror pair |
+| RAID3, 3 or 4 members | Yes | Image | One member may be missing |
+| RAID5, 4 members | Yes | Image | One member may be missing |
 
 Reconstruction was validated against deterministic logical-LBA patterns.
 RAID1 recovery was additionally verified using an ext4 filesystem and known
@@ -39,7 +40,8 @@ does not require private disk captures.
 | `areca_raid5.py` | Reconstruct four-member RAID5 |
 | `raid_pattern.py` | Generate, verify, and scan deterministic test patterns |
 | `areca_iscsi.sh` | Login and automatically apply conservative iSCSI limits |
-| `areca_iscsi_deinit.sh` | Log out and remove the configured node |
+| `areca_iscsi_discover.sh` | Run SendTargets discovery for a portal |
+| `areca_iscsi_logout.sh` | Log out one exact target and portal |
 
 The tools require only Python's standard library and common Linux storage
 utilities.
@@ -71,6 +73,14 @@ Or let the universal tool detect the layout:
 ./areca_raid.py reconstruct recovered.img member0 member2
 ```
 
+Select one Volume Set when a Raid Set contains several:
+
+```bash
+./areca_raid.py inspect --volume 1 member0 member2
+./areca_raid.py reconstruct recovered.img member0 member2 \
+  --volume ARC-5020-VOL#01
+```
+
 Reconstruct RAID3 or RAID5 from all members or all but one:
 
 ```bash
@@ -99,11 +109,10 @@ plausible-looking but corrupted output.
 - `raid_pattern.py write` is destructive and exists only for controlled test
   arrays.
 
-Unknown Areca models, firmware versions, RAID member counts, multiple Volume
-Sets, and untested layouts are intentionally rejected where possible.
-
-Multiple Volume Sets are the next prioritized format investigation; see the
-[TODO](TODO.md) for the controlled experiment.
+Unknown Areca models, firmware versions, RAID member counts, and untested
+layouts are intentionally rejected where possible. Multiple Volume Sets are
+supported for every experimentally verified layout: RAID0, RAID1, RAID1+0,
+RAID3, and RAID5.
 
 ## Documentation
 

@@ -3,7 +3,7 @@ import struct
 import tempfile
 import unittest
 
-from areca import ArecaArray, ArecaError, RaidLevel
+from areca import ArecaArray, ArecaError, RaidLevel, xor_blocks
 from areca.metadata import RAID_MAGIC, VOLUME_MAGIC
 
 
@@ -78,6 +78,22 @@ class ArecaLibraryTests(unittest.TestCase):
         self.assertEqual(self.reconstruct(array, len(expected)), expected)
         with self.assertRaises(ArecaError):
             array.dm_table()
+
+    def test_rejects_untested_raid0_member_count(self) -> None:
+        chunk = 4 * 512
+        members = [
+            self.make_member(
+                index=index,
+                member_count=3,
+                raid_code=0,
+                chunk_sectors=4,
+                blocks=[bytes([65 + index]) * chunk],
+                volume_sectors=12,
+            )
+            for index in range(3)
+        ]
+        with self.assertRaisesRegex(ArecaError, "unsupported RAID code"):
+            ArecaArray.assemble(members)
 
     def test_autodetects_and_reconstructs_raid1_from_one_member(self) -> None:
         chunk = 8 * 512
@@ -177,6 +193,166 @@ class ArecaLibraryTests(unittest.TestCase):
         self.assertEqual(by_index.volume_index, 1)
         self.assertEqual(self.reconstruct(by_index, chunk), b"B" * chunk)
         self.assertEqual(self.reconstruct(by_name, chunk), b"B" * chunk)
+
+    def test_reconstructs_selected_packed_raid10_volume(self) -> None:
+        chunk = 4 * 512
+        members = [
+            self.make_member(
+                index=index,
+                member_count=4,
+                raid_code=1,
+                chunk_sectors=4,
+                blocks=[bytes([65 + index]) * chunk],
+                volume_sectors=8,
+                name=b"MULTI-A         ",
+            )
+            for index in (0, 2)
+        ]
+        second_start = (520 + 512) * 512
+        for index, member in zip((0, 2), members):
+            with open(member, "r+b") as stream:
+                stream.seek(1024 + 128)
+                record = bytearray(128)
+                record[:8] = VOLUME_MAGIC
+                struct.pack_into("<I", record, 8, 8)
+                struct.pack_into("<I", record, 0x0C, 1)
+                struct.pack_into("<I", record, 0x14, 8)
+                struct.pack_into("<I", record, 0x18, 1)
+                struct.pack_into("<H", record, 0x28, 4)
+                struct.pack_into("<H", record, 0x2A, 4)
+                record[0x2C] = record[0x2D] = 1
+                record[0x33] = 1
+                record[0x34:0x44] = b"MULTI-B         "
+                stream.write(record)
+                stream.seek(second_start)
+                stream.write((b"L" if index == 0 else b"R") * chunk)
+
+        array = ArecaArray.assemble(members, volume="MULTI-B")
+        self.assertEqual(array.level, RaidLevel.RAID10)
+        self.assertEqual(array.data_offset_sectors, 1032)
+        self.assertEqual(
+            self.reconstruct(array, 2 * chunk),
+            b"L" * chunk + b"R" * chunk,
+        )
+
+    def test_reconstructs_selected_packed_raid0_volume(self) -> None:
+        chunk = 4 * 512
+        members = [
+            self.make_member(
+                index=index,
+                member_count=4,
+                raid_code=0,
+                chunk_sectors=4,
+                blocks=[bytes([65 + index]) * chunk],
+                volume_sectors=16,
+                name=b"MULTI-A         ",
+            )
+            for index in range(4)
+        ]
+        second_start = (520 + 512) * 512
+        for index, member in enumerate(members):
+            with open(member, "r+b") as stream:
+                stream.seek(1024 + 128)
+                record = bytearray(128)
+                record[:8] = VOLUME_MAGIC
+                struct.pack_into("<I", record, 8, 16)
+                struct.pack_into("<I", record, 0x0C, 1)
+                struct.pack_into("<I", record, 0x14, 16)
+                struct.pack_into("<I", record, 0x18, 1)
+                struct.pack_into("<H", record, 0x28, 4)
+                struct.pack_into("<H", record, 0x2A, 4)
+                record[0x2C] = record[0x2D] = 0
+                record[0x33] = 1
+                record[0x34:0x44] = b"MULTI-B         "
+                stream.write(record)
+                stream.seek(second_start)
+                stream.write(bytes([76 + index]) * chunk)
+
+        array = ArecaArray.assemble(members, volume=1)
+        expected = b"".join(bytes([76 + index]) * chunk for index in range(4))
+        self.assertEqual(array.level, RaidLevel.RAID0)
+        self.assertEqual(array.data_offset_sectors, 1032)
+        self.assertEqual(self.reconstruct(array, 4 * chunk), expected)
+
+    def test_reconstructs_selected_packed_raid3_volume(self) -> None:
+        chunk = 8 * 512
+        data = [b"L" * chunk, b"M" * chunk, b"N" * chunk]
+        second_blocks = data + [xor_blocks(data)]
+        members = [
+            self.make_member(
+                index=index,
+                member_count=4,
+                raid_code=2,
+                chunk_sectors=8,
+                blocks=[bytes([65 + index]) * chunk],
+                volume_sectors=24,
+                name=b"MULTI-A         ",
+            )
+            for index in range(4)
+        ]
+        second_start = (520 + 512) * 512
+        for index, member in enumerate(members):
+            with open(member, "r+b") as stream:
+                stream.seek(1024 + 128)
+                record = bytearray(128)
+                record[:8] = VOLUME_MAGIC
+                struct.pack_into("<I", record, 8, 24)
+                struct.pack_into("<I", record, 0x0C, 1)
+                struct.pack_into("<I", record, 0x14, 24)
+                struct.pack_into("<I", record, 0x18, 1)
+                struct.pack_into("<H", record, 0x28, 8)
+                struct.pack_into("<H", record, 0x2A, 8)
+                record[0x2C] = record[0x2D] = 2
+                record[0x33] = 1
+                record[0x34:0x44] = b"MULTI-B         "
+                stream.write(record)
+                stream.seek(second_start)
+                stream.write(second_blocks[index])
+
+        array = ArecaArray.assemble(members, volume="MULTI-B")
+        self.assertEqual(array.level, RaidLevel.RAID3)
+        self.assertEqual(array.data_offset_sectors, 1032)
+        self.assertEqual(self.reconstruct(array, 3 * chunk), b"".join(data))
+
+    def test_reconstructs_selected_packed_raid5_volume(self) -> None:
+        chunk = 4 * 512
+        data = [b"L" * chunk, b"M" * chunk, b"N" * chunk]
+        second_blocks = data + [xor_blocks(data)]
+        members = [
+            self.make_member(
+                index=index,
+                member_count=4,
+                raid_code=3,
+                chunk_sectors=4,
+                blocks=[bytes([65 + index]) * chunk],
+                volume_sectors=12,
+                name=b"MULTI-A         ",
+            )
+            for index in range(4)
+        ]
+        second_start = (520 + 512) * 512
+        for index, member in enumerate(members):
+            with open(member, "r+b") as stream:
+                stream.seek(1024 + 128)
+                record = bytearray(128)
+                record[:8] = VOLUME_MAGIC
+                struct.pack_into("<I", record, 8, 12)
+                struct.pack_into("<I", record, 0x0C, 1)
+                struct.pack_into("<I", record, 0x14, 12)
+                struct.pack_into("<I", record, 0x18, 1)
+                struct.pack_into("<H", record, 0x28, 4)
+                struct.pack_into("<H", record, 0x2A, 4)
+                record[0x2C] = record[0x2D] = 3
+                record[0x33] = 1
+                record[0x34:0x44] = b"MULTI-B         "
+                stream.write(record)
+                stream.seek(second_start)
+                stream.write(second_blocks[index])
+
+        array = ArecaArray.assemble(members, volume=1)
+        self.assertEqual(array.level, RaidLevel.RAID5)
+        self.assertEqual(array.data_offset_sectors, 1032)
+        self.assertEqual(self.reconstruct(array, 3 * chunk), b"".join(data))
 
 
 if __name__ == "__main__":

@@ -87,6 +87,7 @@ class ArecaMemberTests(unittest.TestCase):
         self.assertEqual(second.record_slot, 1)
         self.assertEqual(second.allocation_offset_units, 3815)
         self.assertEqual(second.candidate_member_offset_sectors, 1_953_800)
+        self.assertEqual(second.member_offset_sectors, 1_953_800)
         self.assertEqual(second.host_drive, 9)
         self.assertEqual(second.volume_index, 1)
 

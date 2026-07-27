@@ -23,7 +23,7 @@ fi
 TARGET=$1
 PORTAL=$2
 
-for command in iscsiadm readlink; do
+for command in iscsiadm readlink awk; do
     if ! command -v "$command" >/dev/null 2>&1; then
         echo "Required command not found: $command" >&2
         exit 2
@@ -37,53 +37,60 @@ update_node() {
         -o update -n "$name" -v "$value"
 }
 
+if ! iscsiadm -m node -T "$TARGET" -p "$PORTAL" -o show >/dev/null 2>&1; then
+    echo "No node record found; running SendTargets discovery at $PORTAL"
+    iscsiadm -m discovery -t sendtargets -p "$PORTAL"
+fi
+
 # These negotiation limits produced a stable session with ARC-5020 V1.50.
 update_node node.session.cmds_max 16
 update_node node.session.queue_depth 1
 update_node node.session.iscsi.MaxBurstLength 131072
 update_node node.session.iscsi.FirstBurstLength 65536
 
-if iscsiadm -m session 2>/dev/null | grep -Fq -- "$TARGET"; then
-    echo "Target already has a logged-in session: $TARGET"
-else
+find_session_id() {
+    iscsiadm -m session 2>/dev/null |
+        awk -v target="$TARGET" -v portal="$PORTAL" '
+            $4 == target && index($3, portal ",") == 1 {
+                gsub(/^\[/, "", $2)
+                gsub(/\]$/, "", $2)
+                print $2
+            }
+        '
+}
+
+mapfile -t session_ids < <(find_session_id)
+if (( ${#session_ids[@]} == 0 )); then
     iscsiadm -m node -T "$TARGET" -p "$PORTAL" --login
+elif (( ${#session_ids[@]} == 1 )); then
+    echo "Target already logged in through $PORTAL (session ${session_ids[0]})."
+else
+    echo "Multiple matching sessions already exist; refusing ambiguity." >&2
+    printf '  session %s\n' "${session_ids[@]}" >&2
+    exit 1
 fi
 
 if command -v udevadm >/dev/null 2>&1; then
     udevadm settle
 fi
 
-find_session() {
-    local session_path
-    local target_name
-
-    for session_path in /sys/class/iscsi_session/session*; do
-        [[ -d $session_path ]] || continue
-        [[ -r $session_path/targetname ]] || continue
-        IFS= read -r target_name < "$session_path/targetname"
-        if [[ $target_name == "$TARGET" ]]; then
-            printf '%s\n' "$session_path"
-        fi
-    done
-}
-
 session=
 for _ in {1..30}; do
-    mapfile -t sessions < <(find_session)
-    if (( ${#sessions[@]} == 1 )); then
-        session=${sessions[0]}
+    mapfile -t session_ids < <(find_session_id)
+    if (( ${#session_ids[@]} == 1 )); then
+        session=/sys/class/iscsi_session/session${session_ids[0]}
         break
     fi
-    if (( ${#sessions[@]} > 1 )); then
-        echo "Multiple sessions found for target $TARGET; refusing ambiguity." >&2
-        printf '  %s\n' "${sessions[@]}" >&2
+    if (( ${#session_ids[@]} > 1 )); then
+        echo "Multiple matching sessions found; refusing ambiguity." >&2
+        printf '  session %s\n' "${session_ids[@]}" >&2
         exit 1
     fi
     sleep 1
 done
 
 if [[ -z $session ]]; then
-    echo "No sysfs session appeared for target $TARGET." >&2
+    echo "No session appeared for target $TARGET through $PORTAL." >&2
     exit 1
 fi
 

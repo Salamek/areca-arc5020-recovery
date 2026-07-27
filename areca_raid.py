@@ -10,7 +10,13 @@ import stat
 import subprocess
 import sys
 
-from areca import ArecaArray, ArecaError, RaidLevel, parse_size
+from areca import (
+    ArecaArray,
+    ArecaError,
+    RaidLevel,
+    parse_size,
+    parse_volume_selector,
+)
 
 
 def summary(array: ArecaArray) -> dict[str, object]:
@@ -69,6 +75,41 @@ def assert_output_device_unused(path: str) -> None:
     walk(tree, root=True)
 
 
+def block_device_family(path: str) -> set[str]:
+    """Return a block device plus its parents, children, and stacked devices."""
+    found: set[str] = set()
+    for inverse in (False, True):
+        command = ["lsblk"]
+        if inverse:
+            command.append("--inverse")
+        command.extend(["--json", "--paths", "--output", "NAME", path])
+        try:
+            completed = subprocess.run(
+                command,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            tree = json.loads(completed.stdout)["blockdevices"]
+        except (
+            OSError,
+            KeyError,
+            json.JSONDecodeError,
+            subprocess.CalledProcessError,
+        ) as error:
+            raise ArecaError(f"cannot resolve block-device relationships: {error}")
+
+        def walk(nodes: list[dict[str, object]]) -> None:
+            for node in nodes:
+                name = node.get("name")
+                if isinstance(name, str):
+                    found.add(os.path.realpath(name))
+                walk(node.get("children") or [])
+
+        walk(tree)
+    return found
+
+
 def parser() -> argparse.ArgumentParser:
     top = argparse.ArgumentParser(description=__doc__)
     commands = top.add_subparsers(dest="command", required=True)
@@ -78,7 +119,9 @@ def parser() -> argparse.ArgumentParser:
     )
     inspect_cmd.add_argument("members", nargs="+")
     inspect_cmd.add_argument("--json", action="store_true")
-    inspect_cmd.add_argument("--volume", help="Volume Set index or exact name")
+    inspect_cmd.add_argument(
+        "--volume", type=parse_volume_selector, help="Volume Set index or exact name"
+    )
 
     reconstruct = commands.add_parser(
         "reconstruct", help="write the logical array to an image or block device"
@@ -86,7 +129,9 @@ def parser() -> argparse.ArgumentParser:
     reconstruct.add_argument("output")
     reconstruct.add_argument("members", nargs="+")
     reconstruct.add_argument("--bytes", type=parse_size)
-    reconstruct.add_argument("--volume", help="Volume Set index or exact name")
+    reconstruct.add_argument(
+        "--volume", type=parse_volume_selector, help="Volume Set index or exact name"
+    )
     reconstruct.add_argument(
         "--i-understand-this-overwrites-the-output-device",
         action="store_true",
@@ -97,14 +142,18 @@ def parser() -> argparse.ArgumentParser:
         "dm-table", help="print a direct device-mapper table when supported"
     )
     table.add_argument("members", nargs="+")
-    table.add_argument("--volume", help="Volume Set index or exact name")
+    table.add_argument(
+        "--volume", type=parse_volume_selector, help="Volume Set index or exact name"
+    )
 
     create = commands.add_parser(
         "create-dm", help="create a direct active device when supported"
     )
     create.add_argument("name")
     create.add_argument("members", nargs="+")
-    create.add_argument("--volume", help="Volume Set index or exact name")
+    create.add_argument(
+        "--volume", type=parse_volume_selector, help="Volume Set index or exact name"
+    )
     create.add_argument(
         "--writable",
         action="store_true",
@@ -120,10 +169,7 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     try:
-        volume_selector = args.volume
-        if volume_selector is not None and volume_selector.isdecimal():
-            volume_selector = int(volume_selector)
-        array = ArecaArray.assemble(args.members, volume=volume_selector)
+        array = ArecaArray.assemble(args.members, volume=args.volume)
 
         if args.command == "inspect":
             data = summary(array)
@@ -160,11 +206,20 @@ def main() -> int:
                 pass
             if output_is_block:
                 resolved = os.path.realpath(args.output)
-                input_paths = {
-                    os.path.realpath(member.path) for member in array.members.values()
-                }
-                if resolved in input_paths:
-                    raise ArecaError("an input member cannot also be the output device")
+                output_family = block_device_family(resolved)
+                for member in array.members.values():
+                    try:
+                        input_is_block = stat.S_ISBLK(os.stat(member.path).st_mode)
+                    except FileNotFoundError:
+                        input_is_block = False
+                    if (
+                        input_is_block
+                        and output_family & block_device_family(member.path)
+                    ):
+                        raise ArecaError(
+                            "output device overlaps an input member or its "
+                            f"block-device stack: {member.path}"
+                        )
                 assert_output_device_unused(resolved)
                 if not args.i_understand_this_overwrites_the_output_device:
                     raise ArecaError(

@@ -169,11 +169,6 @@ def inspect(path: str) -> Inspection:
 
         warnings: list[str] = []
         gpt = find_gpt_offset(fd, size)
-        if gpt is None:
-            warnings.append(
-                "No unique primary GPT header was found in the first 16 MiB; "
-                "the member offset cannot be derived safely."
-            )
 
         member_count = struct.unpack_from("<I", raid, 8)[0]
         volumes: list[Volume] = []
@@ -189,8 +184,6 @@ def inspect(path: str) -> Inspection:
                     f"is {duplicate_sectors}, expected {sectors}"
                 )
 
-            # A GPT scan only proves the first/single logical volume's offset.
-            # For packed multi-volume metadata, retain it only for allocation 0.
             allocation_offset_units = struct.unpack_from("<I", record, 0x0C)[0]
             allocation_offset_units_copy = struct.unpack_from("<I", record, 0x18)[0]
             candidate_member_offset_sectors = (
@@ -203,13 +196,28 @@ def inspect(path: str) -> Inspection:
                     f"are {allocation_offset_units}/{allocation_offset_units_copy}"
                 )
 
-            if gpt is None or allocation_offset_units != 0:
+            if allocation_offset_units != allocation_offset_units_copy:
                 member_offset_sectors = -1
                 gpt_member_lba = None
                 offset_source = "unresolved"
             else:
-                member_offset_sectors, gpt_member_lba = gpt
-                offset_source = "embedded GPT current-LBA geometry"
+                member_offset_sectors = candidate_member_offset_sectors
+                gpt_member_lba = (
+                    gpt[1]
+                    if gpt is not None and allocation_offset_units == 0
+                    else None
+                )
+                offset_source = "verified ARC-5020 allocation metadata"
+                if (
+                    gpt is not None
+                    and allocation_offset_units == 0
+                    and gpt[0] != member_offset_sectors
+                ):
+                    warnings.append(
+                        f"Volume {location}: metadata start LBA "
+                        f"{member_offset_sectors} disagrees with GPT-derived "
+                        f"start LBA {gpt[0]}"
+                    )
 
             stripe_sectors = struct.unpack_from("<H", record, 0x28)[0]
             stripe_sectors_copy = struct.unpack_from("<H", record, 0x2A)[0]
@@ -270,31 +278,29 @@ def inspect(path: str) -> Inspection:
                 gpt_header_member_lba=gpt_member_lba,
             )
             if member_offset_sectors >= 0:
-                end = volume.member_offset_bytes + volume.bytes
+                if raid_level_code == 0:
+                    data_width = member_count
+                elif raid_level_code == 1 and member_count == 4:
+                    data_width = 2
+                elif raid_level_code in (2, 3):
+                    data_width = member_count - 1
+                else:
+                    data_width = 1
+                member_sectors = (volume.sectors + data_width - 1) // data_width
+                end = volume.member_offset_bytes + member_sectors * SECTOR_SIZE
                 if end > size:
-                    raise ArecaError(
-                        f"derived volume end {end} exceeds member size {size}"
-                    )
-                mbr = pread_exact(fd, SECTOR_SIZE, volume.member_offset_bytes)
-                if mbr[510:512] != b"\x55\xaa":
                     warnings.append(
-                        f"Derived volume start LBA {member_offset_sectors} "
-                        "does not contain an MBR 0x55aa signature"
+                        f"Volume {location}: input ends before the complete "
+                        f"Volume Set ({size} bytes available, {end} required)"
                     )
-                if member_offset_sectors != 520:
-                    warnings.append(
-                        f"Derived offset is {member_offset_sectors} sectors, "
-                        "not the 520-sector Areca layout observed and externally "
-                        "reported for comparable controllers"
-                    )
+                if gpt_member_lba is not None:
+                    mbr = pread_exact(fd, SECTOR_SIZE, volume.member_offset_bytes)
+                    if mbr[510:512] != b"\x55\xaa":
+                        warnings.append(
+                            f"Volume {location}: GPT was found, but the derived "
+                            "volume start lacks an MBR 0x55aa signature"
+                        )
             volumes.append(volume)
-
-        if len(volumes) > 1:
-            warnings.append(
-                "Multiple packed Volume records exist. The allocation formula is "
-                "verified for RAID1; striped/parity multi-volume placement remains "
-                "unverified."
-            )
 
         raid_set_sectors = struct.unpack_from("<I", raid, 0x60)[0]
         if volumes and raid_set_sectors and volumes[0].sectors > raid_set_sectors:
@@ -351,8 +357,16 @@ def print_human(result: Inspection) -> None:
             f"{volume.allocation_offset_units_copy} units"
         )
         start_label = (
-            "Verified RAID1 member start"
-            if result.member_count == 2 and volume.raid_level_code == 1
+            "Verified member start"
+            if (
+                volume.raid_level_code == 0
+                or volume.raid_level_code == 2
+                or volume.raid_level_code == 3
+                or (
+                    result.member_count in (2, 4)
+                    and volume.raid_level_code == 1
+                )
+            )
             else "Candidate member start (unverified for this RAID level)"
         )
         print(
@@ -400,6 +414,8 @@ def create_loop(result: Inspection, writable: bool) -> str:
     volume = result.volumes[0]
     if volume.member_offset_bytes < 0:
         raise ArecaError("loop creation refused because volume offset is unresolved")
+    if result.device_bytes < volume.member_offset_bytes + volume.bytes:
+        raise ArecaError("loop creation requires a complete Volume Set capture")
     if result.member_count != 2 or not volume.inferred_raid_level.startswith("RAID1 "):
         raise ArecaError(
             "linear loop creation is only supported for the validated "
