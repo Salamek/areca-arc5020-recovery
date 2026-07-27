@@ -150,7 +150,7 @@ Verify one RAID5 member, including its rotating data/parity roles:
 Run the standard-library test suite:
 
 ```bash
-python -m unittest -v
+python -m unittest discover -s tests -v
 ```
 
 Tests create synthetic temporary member images and do not depend on the

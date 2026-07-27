@@ -508,7 +508,7 @@ Automated member inspection and mapping:
   * Tests are in `test_areca_member.py` and run with:
 
     ```bash
-    python -m unittest -v
+    python -m unittest discover -s tests -v
     ```
 
 RAID layout experiment samples:

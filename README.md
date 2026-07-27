@@ -93,7 +93,7 @@ Reconstruct RAID3 or RAID5 from all members or all but one:
 Run tests:
 
 ```bash
-python -m unittest -v
+python -m unittest discover -s tests -v
 ```
 
 See the [recovery guide](docs/recovery.md) for supported combinations,
