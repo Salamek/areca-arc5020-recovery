@@ -1294,3 +1294,34 @@ Final output should include:
 
 The management password is intentionally omitted from public documentation
 and retained locally in the ignored `PRIVATE_NOTES.md`.
+
+## Multiple Volume Sets
+
+A two-member RAID1 Raid Set was created with equal-sized Volume Sets named
+`MULTI-VOL-A` and `MULTI-VOL-B`, exported as host drives 8 and 9.
+
+- `$VolumE$` records are packed into 128-byte slots at member bytes 1024 and
+  1152.
+- Duplicate LE32 fields at record offsets `+0x0c` and `+0x18` contained 0 and
+  3815.
+- Each allocation unit is 512 sectors.
+- The physical RAID1 member formula is
+  `520 + allocation_offset * 512` sectors.
+- Distinct 16 MiB patterns written through both iSCSI LUNs were recovered
+  exactly at member LBAs 520 and 1,953,800.
+- Record byte `+0x2f` held host drives 8/9 and `+0x33` held Volume Set
+  indices 0/1.
+
+The library and universal CLI now select multi-volume RAID1 Volume Sets by
+index or exact name. Other RAID levels remain blocked until their
+multi-volume placement is validated.
+
+End-to-end reconstruction was then verified from physical member 0:
+
+- `MULTI-VOL-A` reconstructed 16 MiB with pattern base 0 and passed
+  `raid_pattern.py verify`;
+- `MULTI-VOL-B` reconstructed 16 MiB with pattern base 1,000,000 and passed
+  `raid_pattern.py verify`.
+
+This validates metadata selection, allocation-offset translation, and logical
+data reads for both Volume Sets independently.

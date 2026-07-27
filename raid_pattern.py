@@ -11,8 +11,6 @@ import os
 import stat
 import struct
 import sys
-from pathlib import Path
-
 
 SECTOR_SIZE = 512
 CHUNK_SIZE = 128 * 1024
@@ -76,13 +74,20 @@ def mounted_sources() -> set[str]:
     return result
 
 
-def write_pattern(path: str, byte_count: int, destructive_ack: bool) -> str:
+def write_pattern(
+    path: str,
+    byte_count: int,
+    destructive_ack: bool,
+    pattern_lba_base: int = 0,
+) -> str:
     if not destructive_ack:
         raise PatternError(
             "refusing to write without --i-understand-this-destroys-data"
         )
     if byte_count <= 0 or byte_count % SECTOR_SIZE:
         raise PatternError("write length must be a positive multiple of 512")
+    if pattern_lba_base < 0:
+        raise PatternError("pattern LBA base cannot be negative")
 
     resolved = os.path.realpath(path)
     if resolved in mounted_sources():
@@ -105,19 +110,27 @@ def write_pattern(path: str, byte_count: int, destructive_ack: bool) -> str:
             )
         sectors_per_chunk = CHUNK_SIZE // SECTOR_SIZE
         total_sectors = byte_count // SECTOR_SIZE
-        lba = 0
-        while lba < total_sectors:
-            count = min(sectors_per_chunk, total_sectors - lba)
-            chunk = b"".join(make_sector(value) for value in range(lba, lba + count))
+        sector_index = 0
+        while sector_index < total_sectors:
+            count = min(sectors_per_chunk, total_sectors - sector_index)
+            first_pattern_lba = pattern_lba_base + sector_index
+            chunk = b"".join(
+                make_sector(value)
+                for value in range(first_pattern_lba, first_pattern_lba + count)
+            )
             written = os.write(fd, chunk)
             if written != len(chunk):
                 raise PatternError(
-                    f"short write at LBA {lba}: {written}/{len(chunk)} bytes"
+                    f"short write at sector {sector_index}: "
+                    f"{written}/{len(chunk)} bytes"
                 )
             digest.update(chunk)
-            lba += count
-            if lba % (128 * 1024) == 0 or lba == total_sectors:
-                mib = lba * SECTOR_SIZE // (1024 * 1024)
+            sector_index += count
+            if (
+                sector_index % (128 * 1024) == 0
+                or sector_index == total_sectors
+            ):
+                mib = sector_index * SECTOR_SIZE // (1024 * 1024)
                 print(f"\rwritten {mib} MiB", end="", file=sys.stderr, flush=True)
         os.fsync(fd)
         print(file=sys.stderr)
@@ -126,7 +139,12 @@ def write_pattern(path: str, byte_count: int, destructive_ack: bool) -> str:
         os.close(fd)
 
 
-def verify_pattern(path: str, byte_count: int, start_lba: int = 0) -> None:
+def verify_pattern(
+    path: str,
+    byte_count: int,
+    start_lba: int = 0,
+    pattern_lba_base: int | None = None,
+) -> None:
     if byte_count <= 0 or byte_count % SECTOR_SIZE:
         raise PatternError("verify length must be a positive multiple of 512")
     fd = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
@@ -138,7 +156,9 @@ def verify_pattern(path: str, byte_count: int, start_lba: int = 0) -> None:
         for index in range(sectors):
             data = os.pread(fd, SECTOR_SIZE, offset + index * SECTOR_SIZE)
             decoded = decode_sector(data)
-            expected = start_lba + index
+            expected = (
+                start_lba if pattern_lba_base is None else pattern_lba_base
+            ) + index
             if decoded != expected:
                 raise PatternError(
                     f"pattern mismatch at input sector {index}: "
@@ -209,6 +229,12 @@ def parser() -> argparse.ArgumentParser:
     write.add_argument("device")
     write.add_argument("--bytes", type=parse_size, default=parse_size("1GiB"))
     write.add_argument(
+        "--pattern-lba-base",
+        type=int,
+        default=0,
+        help="number encoded in the first sector (default: 0)",
+    )
+    write.add_argument(
         "--i-understand-this-destroys-data", action="store_true", required=True
     )
 
@@ -216,6 +242,11 @@ def parser() -> argparse.ArgumentParser:
     verify.add_argument("input")
     verify.add_argument("--bytes", type=parse_size, required=True)
     verify.add_argument("--start-lba", type=int, default=0)
+    verify.add_argument(
+        "--pattern-lba-base",
+        type=int,
+        help="expected encoded LBA at --start-lba (default: --start-lba)",
+    )
 
     scan = commands.add_parser(
         "scan", help="report contiguous logical-LBA runs in a member/image"
@@ -234,10 +265,16 @@ def main() -> int:
                 args.device,
                 args.bytes,
                 args.i_understand_this_destroys_data,
+                args.pattern_lba_base,
             )
             print(f"SHA256 {digest}")
         elif args.command == "verify":
-            verify_pattern(args.input, args.bytes, args.start_lba)
+            verify_pattern(
+                args.input,
+                args.bytes,
+                args.start_lba,
+                args.pattern_lba_base,
+            )
             print("pattern verified")
         elif args.command == "scan":
             runs = scan_runs(args.input, args.offset, args.bytes)

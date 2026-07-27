@@ -33,16 +33,22 @@ does not require private disk captures.
 | Tool | Purpose |
 |---|---|
 | `areca_member.py` | Inspect metadata and map a validated RAID1 member |
+| `areca_raid.py` | Universal auto-detection and reconstruction CLI |
 | `areca_raid10.py` | Reconstruct four-member RAID1+0 |
 | `areca_raid3.py` | Reconstruct three- or four-member RAID3 |
 | `areca_raid5.py` | Reconstruct four-member RAID5 |
 | `raid_pattern.py` | Generate, verify, and scan deterministic test patterns |
-| `areca_iscsi_init.sh` | Configure/login with conservative iSCSI parameters |
-| `areca_iscsi_limits.sh` | Apply runtime block queue limits |
+| `areca_iscsi.sh` | Login and automatically apply conservative iSCSI limits |
 | `areca_iscsi_deinit.sh` | Log out and remove the configured node |
 
 The tools require only Python's standard library and common Linux storage
 utilities.
+
+Use directly from a checkout, or install the library and console commands:
+
+```bash
+python -m pip install .
+```
 
 ## Quick start
 
@@ -56,6 +62,13 @@ Reconstruct RAID1+0 from one healthy member in each mirror pair:
 
 ```bash
 ./areca_raid10.py reconstruct recovered.img member0 member2
+```
+
+Or let the universal tool detect the layout:
+
+```bash
+./areca_raid.py inspect --json member0 member2
+./areca_raid.py reconstruct recovered.img member0 member2
 ```
 
 Reconstruct RAID3 or RAID5 from all members or all but one:
@@ -89,12 +102,17 @@ plausible-looking but corrupted output.
 Unknown Areca models, firmware versions, RAID member counts, multiple Volume
 Sets, and untested layouts are intentionally rejected where possible.
 
+Multiple Volume Sets are the next prioritized format investigation; see the
+[TODO](TODO.md) for the controlled experiment.
+
 ## Documentation
 
 - [Recovery tool guide](docs/recovery.md)
+- [Python library and universal assembler](docs/library.md)
 - [Decoded on-disk format and RAID layouts](docs/on-disk-format.md)
 - [iSCSI export and Linux initiator workaround](docs/iscsi.md)
 - [Chronological research log and experimental evidence](docs/research-log.md)
+- [Out-of-scope ideas and future experiments](TODO.md)
 
 Raw member captures and downloaded firmware are excluded from Git because they
 are large, potentially contain residual user data, and may not be

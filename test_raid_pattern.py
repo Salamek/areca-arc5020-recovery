@@ -28,6 +28,20 @@ class RaidPatternTests(unittest.TestCase):
         runs = raid_pattern.scan_runs(handle.name, 0, 512 * 64)
         self.assertEqual(runs, [(0, 0, 32)])
 
+    def test_distinct_pattern_lba_base(self) -> None:
+        handle = tempfile.NamedTemporaryFile(delete=False)
+        handle.truncate(512 * 16)
+        handle.close()
+        self.addCleanup(lambda: os.unlink(handle.name))
+        raid_pattern.write_pattern(handle.name, 512 * 16, True, 1_000_000)
+        raid_pattern.verify_pattern(
+            handle.name, 512 * 16, pattern_lba_base=1_000_000
+        )
+        self.assertEqual(
+            raid_pattern.scan_runs(handle.name, 0, 512 * 16),
+            [(0, 1_000_000, 16)],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

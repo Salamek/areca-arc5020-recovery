@@ -57,15 +57,18 @@ runtime queue_depth = 1
 The repository scripts apply the persistent and runtime portions:
 
 ```bash
-sudo ./areca_iscsi_init.sh
-sudo ./areca_iscsi_limits.sh /dev/sdX
+sudo ./areca_iscsi.sh \
+  iqn.2000-01.com.abc.xyz:group-08 \
+  192.168.1.235:3260
 ```
 
-`areca_iscsi_init.sh` contains the tested target IQN and portal as variables;
-edit those two values for a different enclosure before running it.
+`areca_iscsi.sh` accepts the target IQN and portal as arguments, finds the
+block device belonging to the resulting sysfs iSCSI session, and applies both
+runtime block queue limits automatically. It also prints the detected device
+path and the applied values.
 
-Always verify the target identity before passing a device path. Device names
-can change after logout, reboot, or USB member attachment.
+Always verify the target identity printed by the script. Device names can
+change after logout, reboot, or USB member attachment.
 
 Inspect the negotiated session with:
 

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "areca-arc5020-recovery"
+version = "0.1.0"
+description = "Inspect and reconstruct tested Areca ARC-5020 RAID layouts"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "ARC-5020 recovery contributors" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Archiving :: Backup",
+  "Topic :: System :: Hardware",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy"
+]
+
+[project.scripts]
+areca-member = "areca_member:main"
+areca-raid = "areca_raid:main"
+areca-raid10 = "areca_raid10:main"
+areca-raid3 = "areca_raid3:main"
+areca-raid5 = "areca_raid5:main"
+areca-raid-pattern = "raid_pattern:main"
+
+[tool.setuptools]
+py-modules = [
+  "areca_member",
+  "areca_raid",
+  "areca_raid10",
+  "areca_raid3",
+  "areca_raid5",
+  "raid_pattern",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["areca*"]

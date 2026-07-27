@@ -4,6 +4,24 @@ All reconstruction tools open member inputs read-only and refuse inconsistent
 metadata. Output image paths must not already exist. Work from full-disk
 images or cloned disks whenever possible.
 
+For new workflows, prefer the auto-detecting universal CLI:
+
+```bash
+./areca_raid.py inspect --json member0 member2 member3
+./areca_raid.py reconstruct recovered.img member0 member2 member3
+```
+
+For a multi-volume RAID1 member, select a Volume Set by index or exact name:
+
+```bash
+./areca_raid.py inspect --volume MULTI-VOL-B member0
+./areca_raid.py reconstruct recovered-b.img member0 \
+  --volume MULTI-VOL-B
+```
+
+See the [library and universal assembler guide](library.md). The specialized
+commands below remain as compatibility interfaces.
+
 ## Inspect a member
 
 ```bash

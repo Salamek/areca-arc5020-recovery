@@ -36,6 +36,22 @@ Decoded `$VolumE$` fields:
 | `+0x2d` | U8 | Duplicate RAID-level code |
 | `+0x34` | ASCII | Volume Set name |
 
+Volume records are 128-byte packed slots rather than one record per sector.
+The tested two-volume RAID1 member stores slots at byte offsets 1024 and 1152.
+Candidate fields under active verification are:
+
+| Offset | Encoding | Candidate meaning |
+|---:|---|---|
+| `+0x0c`, `+0x18` | LE32 | duplicated allocation offset in 512-sector units |
+| `+0x2f` | byte | host drive mapping |
+| `+0x33` | byte | zero-based Volume Set index |
+
+For the tested two-volume RAID1 sample, the physical start formula is
+`520 + allocation_offset * 512` member sectors. Distinct 16 MiB patterns
+written through the two iSCSI LUNs were found exactly at member LBAs 520 and
+1,953,800. Placement for multi-volume striped/parity arrays is not yet
+verified.
+
 Observed RAID-level codes:
 
 | Code | Meaning |
