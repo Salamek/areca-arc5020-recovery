@@ -11,11 +11,6 @@ from dataclasses import asdict
 
 from areca.metadata import (
     ArecaError,
-    GPT_MAGIC,
-    RAID_MAGIC,
-    SECTOR_SIZE,
-    VOLUME_MAGIC,
-    VOLUME_RECORD_SIZE,
     create_loop,
     inspect,
     print_human,
