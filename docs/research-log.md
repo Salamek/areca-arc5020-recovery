@@ -1387,3 +1387,25 @@ complete parity rotations. All data chunks and rotating parity chunks matched
 the expected left-symmetric layout. Each Volume Set restarted at RAID5 row
 zero. This validates multi-volume RAID5 reconstruction, including degraded
 reads.
+
+## Final RAID1+0 acceptance test
+
+The project's primary recovery workflow was tested using a newly created
+four-member RAID1+0 Volume Set with a 64 KiB stripe and an ext4 filesystem.
+A 2 GiB file was written through the assembled ARC-5020 and flushed before
+shutdown.
+
+Physical members with embedded indices 0 and 2 were then attached directly
+to Linux. `areca_raid.py create-dm` identified their mirror-pair roles from
+metadata and created a read-only device-mapper reconstruction. Linux detected
+the expected ext4 filesystem directly on the reconstructed device. The
+filesystem was mounted read-only without journal replay, and the recovered
+2 GiB file's SHA-256 checksum matched the original.
+
+This validates the intended end-to-end use case:
+
+- detection and ordering from embedded member metadata;
+- reconstruction from one member of each RAID1+0 mirror pair;
+- live read-only device-mapper exposure;
+- ext4 filesystem recognition and mounting;
+- file-level recovery without corruption.

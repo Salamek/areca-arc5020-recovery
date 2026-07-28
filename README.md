@@ -28,8 +28,12 @@ is not affiliated with Areca.
 
 Reconstruction was validated against deterministic logical-LBA patterns.
 RAID1 recovery was additionally verified using an ext4 filesystem and known
-file checksums. The complete test suite uses generated temporary fixtures and
-does not require private disk captures.
+file checksums. The primary RAID1+0 recovery workflow was validated end to
+end using physical members from different mirror pairs: the tool created a
+read-only device-mapper reconstruction, Linux recognized the ext4 filesystem,
+and a recovered 2 GiB file matched its original SHA-256 checksum. The complete
+test suite uses generated temporary fixtures and does not require private disk
+captures.
 
 ## Tools
 
@@ -124,10 +128,6 @@ RAID3, and RAID5.
 - [iSCSI export and Linux initiator workaround](docs/iscsi.md)
 - [Chronological research log and experimental evidence](docs/research-log.md)
 - [Out-of-scope ideas and future experiments](TODO.md)
-
-Raw member captures and downloaded firmware are excluded from Git because they
-are large, potentially contain residual user data, and may not be
-redistributable.
 
 ## License
 
