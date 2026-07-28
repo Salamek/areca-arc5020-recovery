@@ -32,18 +32,12 @@ dev = [
 [project.scripts]
 areca-member = "areca_member:main"
 areca-raid = "areca_raid:main"
-areca-raid10 = "areca_raid10:main"
-areca-raid3 = "areca_raid3:main"
-areca-raid5 = "areca_raid5:main"
 areca-raid-pattern = "raid_pattern:main"
 
 [tool.setuptools]
 py-modules = [
   "areca_member",
   "areca_raid",
-  "areca_raid10",
-  "areca_raid3",
-  "areca_raid5",
   "raid_pattern",
 ]
 

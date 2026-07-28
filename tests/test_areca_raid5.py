@@ -3,8 +3,8 @@ import struct
 import tempfile
 import unittest
 
-import areca_member
-import areca_raid5
+from areca import ArecaArray, raid5_row_layout, xor_blocks
+from areca.metadata import RAID_MAGIC, VOLUME_MAGIC
 
 
 class ArecaRaid5Tests(unittest.TestCase):
@@ -13,14 +13,14 @@ class ArecaRaid5Tests(unittest.TestCase):
         chunk = sectors * 512
         image = bytearray(520 * 512 + len(blocks) * chunk)
         raid = memoryview(image)[512:1024]
-        raid[:8] = areca_member.RAID_MAGIC
+        raid[:8] = RAID_MAGIC
         struct.pack_into("<I", raid, 8, 4)
         struct.pack_into("<I", raid, 12, 4)
         struct.pack_into("<I", raid, 0x54, index)
         struct.pack_into("<I", raid, 0x60, len(blocks) * sectors)
         raid[0x68:0x78] = b"Raid Set # 00   "
         volume = memoryview(image)[1024:1536]
-        volume[:8] = areca_member.VOLUME_MAGIC
+        volume[:8] = VOLUME_MAGIC
         struct.pack_into("<I", volume, 8, len(blocks) * sectors * 3)
         struct.pack_into("<I", volume, 20, len(blocks) * sectors * 3)
         struct.pack_into("<H", volume, 0x28, sectors)
@@ -41,10 +41,10 @@ class ArecaRaid5Tests(unittest.TestCase):
         member_blocks = [[] for _ in range(4)]
         logical_parts = []
         for row in range(5):
-            parity_index, data_order = areca_raid5.row_layout(row, 4)
+            parity_index, data_order = raid5_row_layout(row, 4)
             data = [bytes([row * 3 + n + 1]) * chunk for n in range(3)]
             logical_parts.extend(data)
-            parity = areca_raid5.xor_blocks(data)
+            parity = xor_blocks(data)
             for index, block in zip(data_order, data):
                 member_blocks[index].append(block)
             member_blocks[parity_index].append(parity)
@@ -54,15 +54,15 @@ class ArecaRaid5Tests(unittest.TestCase):
     def reconstruct(self, members: list[str], length: int) -> bytes:
         output = tempfile.mktemp()
         self.addCleanup(lambda: os.path.exists(output) and os.unlink(output))
-        areca_raid5.reconstruct(members, output, length)
+        ArecaArray.assemble(members).reconstruct(output, length)
         with open(output, "rb") as stream:
             return stream.read()
 
     def test_left_symmetric_rows(self) -> None:
-        self.assertEqual(areca_raid5.row_layout(0, 4), (3, [0, 1, 2]))
-        self.assertEqual(areca_raid5.row_layout(1, 4), (2, [3, 0, 1]))
-        self.assertEqual(areca_raid5.row_layout(2, 4), (1, [2, 3, 0]))
-        self.assertEqual(areca_raid5.row_layout(3, 4), (0, [1, 2, 3]))
+        self.assertEqual(raid5_row_layout(0, 4), (3, [0, 1, 2]))
+        self.assertEqual(raid5_row_layout(1, 4), (2, [3, 0, 1]))
+        self.assertEqual(raid5_row_layout(2, 4), (1, [2, 3, 0]))
+        self.assertEqual(raid5_row_layout(3, 4), (0, [1, 2, 3]))
 
     def test_reconstructs_all_and_each_missing_member(self) -> None:
         members, logical = self.make_set()

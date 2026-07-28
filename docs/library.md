@@ -10,7 +10,7 @@ Install from a checkout with:
 python -m pip install .
 ```
 
-This provides the `areca-raid`, `areca-member`, and specialized compatibility
+This provides the `areca-raid`, `areca-member`, and `areca-raid-pattern`
 commands. There are no runtime Python dependencies outside the standard
 library.
 

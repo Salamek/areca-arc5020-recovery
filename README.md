@@ -41,9 +41,6 @@ captures.
 |---|---|
 | `areca_member.py` | Inspect metadata and map a validated RAID1 member |
 | `areca_raid.py` | Universal auto-detection and reconstruction CLI |
-| `areca_raid10.py` | Reconstruct four-member RAID1+0 |
-| `areca_raid3.py` | Reconstruct three- or four-member RAID3 |
-| `areca_raid5.py` | Reconstruct four-member RAID5 |
 | `raid_pattern.py` | Generate, verify, and scan deterministic test patterns |
 | `areca_iscsi.sh` | Login and automatically apply conservative iSCSI limits |
 | `areca_iscsi_discover.sh` | Run SendTargets discovery for a portal |
@@ -69,12 +66,6 @@ Inspect member images or disks:
 Reconstruct RAID1+0 from one healthy member in each mirror pair:
 
 ```bash
-./areca_raid10.py reconstruct recovered.img member0 member2
-```
-
-Or let the universal tool detect the layout:
-
-```bash
 ./areca_raid.py inspect --json member0 member2
 ./areca_raid.py reconstruct recovered.img member0 member2
 ```
@@ -90,8 +81,8 @@ Select one Volume Set when a Raid Set contains several:
 Reconstruct RAID3 or RAID5 from all members or all but one:
 
 ```bash
-./areca_raid3.py recovered.img member0 member1 member2
-./areca_raid5.py recovered.img member0 member1 member3
+./areca_raid.py reconstruct recovered-raid3.img member0 member1 member2
+./areca_raid.py reconstruct recovered-raid5.img member0 member1 member3
 ```
 
 Run tests:

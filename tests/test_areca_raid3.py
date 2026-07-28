@@ -3,8 +3,8 @@ import struct
 import tempfile
 import unittest
 
-import areca_member
-import areca_raid3
+from areca import ArecaArray, xor_blocks
+from areca.metadata import RAID_MAGIC, VOLUME_MAGIC
 
 
 class ArecaRaid3Tests(unittest.TestCase):
@@ -15,14 +15,14 @@ class ArecaRaid3Tests(unittest.TestCase):
         chunk = chunk_sectors * 512
         image = bytearray(520 * 512 + len(blocks) * chunk)
         raid = memoryview(image)[512:1024]
-        raid[:8] = areca_member.RAID_MAGIC
+        raid[:8] = RAID_MAGIC
         struct.pack_into("<I", raid, 8, member_count)
         struct.pack_into("<I", raid, 12, member_count)
         struct.pack_into("<I", raid, 0x54, index)
         struct.pack_into("<I", raid, 0x60, len(blocks) * chunk_sectors)
         raid[0x68:0x78] = b"Raid Set # 00   "
         volume = memoryview(image)[1024:1536]
-        volume[:8] = areca_member.VOLUME_MAGIC
+        volume[:8] = VOLUME_MAGIC
         data_members = member_count - 1
         struct.pack_into(
             "<I", volume, 8, len(blocks) * chunk_sectors * data_members
@@ -50,7 +50,7 @@ class ArecaRaid3Tests(unittest.TestCase):
             for index in range(3)
         ]
         parity = [
-            areca_raid3.xor_blocks([data[0][row], data[1][row], data[2][row]])
+            xor_blocks([data[0][row], data[1][row], data[2][row]])
             for row in range(2)
         ]
         members = [self.make_member(i, data[i] if i < 3 else parity) for i in range(4)]
@@ -62,7 +62,7 @@ class ArecaRaid3Tests(unittest.TestCase):
     def reconstruct(self, members: list[str], length: int) -> bytes:
         output = tempfile.mktemp()
         self.addCleanup(lambda: os.path.exists(output) and os.unlink(output))
-        areca_raid3.reconstruct(members, output, length)
+        ArecaArray.assemble(members).reconstruct(output, length)
         with open(output, "rb") as stream:
             return stream.read()
 
@@ -88,7 +88,7 @@ class ArecaRaid3Tests(unittest.TestCase):
             for index in range(2)
         ]
         parity = [
-            areca_raid3.xor_blocks([data[0][row], data[1][row]])
+            xor_blocks([data[0][row], data[1][row]])
             for row in range(3)
         ]
         blocks = [data[0], data[1], parity]

@@ -20,8 +20,7 @@ exact name:
   --volume MULTI-VOL-B
 ```
 
-See the [library and universal assembler guide](library.md). The specialized
-commands below remain as compatibility interfaces.
+See the [library and universal assembler guide](library.md).
 
 ## Inspect a member
 
@@ -47,19 +46,19 @@ refuses writable mapping unless `--writable-loop` is explicitly supplied.
 Supply one healthy member from indices 0/1 and one from indices 2/3:
 
 ```bash
-./areca_raid10.py reconstruct recovered.img member0 member2
+./areca_raid.py reconstruct recovered.img member0 member2
 ```
 
 Limit output while testing partial captures:
 
 ```bash
-./areca_raid10.py reconstruct recovered.img member0 member2 --bytes 64MiB
+./areca_raid.py reconstruct recovered.img member0 member2 --bytes 64MiB
 ```
 
 Preview a device-mapper table for two complete physical members:
 
 ```bash
-sudo ./areca_raid10.py dm-table \
+sudo ./areca_raid.py dm-table \
   /dev/disk/by-id/member-from-0-or-1 \
   /dev/disk/by-id/member-from-2-or-3
 ```
@@ -67,7 +66,7 @@ sudo ./areca_raid10.py dm-table \
 Create the mapping read-only:
 
 ```bash
-sudo ./areca_raid10.py create-dm arc5020-recovery \
+sudo ./areca_raid.py create-dm arc5020-recovery \
   /dev/disk/by-id/member-from-0-or-1 \
   /dev/disk/by-id/member-from-2-or-3
 ```
@@ -80,12 +79,12 @@ sudo dmsetup remove arc5020-recovery
 
 ## RAID3
 
-`areca_raid3.py` supports the experimentally verified three- and four-member
-layouts. Supply all members or all but one:
+The universal tool supports the experimentally verified three- and
+four-member RAID3 layouts. Supply all members or all but one:
 
 ```bash
-./areca_raid3.py recovered.img member0 member1 member2
-./areca_raid3.py recovered.img member0 member2
+./areca_raid.py reconstruct recovered.img member0 member1 member2
+./areca_raid.py reconstruct recovered.img member0 member2
 ```
 
 The highest index is dedicated parity. If a data member is missing, its chunk
@@ -97,8 +96,8 @@ The tool supports the verified four-member left-symmetric layout. Supply all
 members or any three:
 
 ```bash
-./areca_raid5.py recovered.img member0 member1 member2 member3
-./areca_raid5.py recovered.img member0 member2 member3
+./areca_raid.py reconstruct recovered.img member0 member1 member2 member3
+./areca_raid.py reconstruct recovered.img member0 member2 member3
 ```
 
 A missing data chunk is reconstructed from the three surviving row chunks.
