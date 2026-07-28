@@ -3,14 +3,15 @@ import struct
 import tempfile
 import unittest
 
-import areca_member
+from areca import ArecaError, inspect
+from areca.metadata import GPT_MAGIC, RAID_MAGIC, VOLUME_MAGIC
 
 
 class ArecaMemberTests(unittest.TestCase):
     def make_image(self) -> str:
         image = bytearray(4 * 1024 * 1024)
         raid = memoryview(image)[512:1024]
-        raid[:8] = areca_member.RAID_MAGIC
+        raid[:8] = RAID_MAGIC
         struct.pack_into("<I", raid, 8, 2)
         struct.pack_into("<I", raid, 12, 2)
         struct.pack_into("<I", raid, 0x54, 1)
@@ -18,7 +19,7 @@ class ArecaMemberTests(unittest.TestCase):
         raid[0x68:0x78] = b"Raid Set # 00   "
 
         volume = memoryview(image)[1024:1536]
-        volume[:8] = areca_member.VOLUME_MAGIC
+        volume[:8] = VOLUME_MAGIC
         struct.pack_into("<I", volume, 8, 4096)
         struct.pack_into("<I", volume, 20, 4096)
         volume[0x28] = 0x80
@@ -31,7 +32,7 @@ class ArecaMemberTests(unittest.TestCase):
         mbr = offset_lba * 512
         image[mbr + 510 : mbr + 512] = b"\x55\xaa"
         gpt = mbr + 512
-        image[gpt : gpt + 8] = areca_member.GPT_MAGIC
+        image[gpt : gpt + 8] = GPT_MAGIC
         struct.pack_into("<I", image, gpt + 12, 92)
         struct.pack_into("<Q", image, gpt + 24, 1)
 
@@ -43,7 +44,7 @@ class ArecaMemberTests(unittest.TestCase):
 
     def test_detects_validated_layout(self) -> None:
         path = self.make_image()
-        result = areca_member.inspect(path)
+        result = inspect(path)
         self.assertTrue(result.areca_detected)
         self.assertEqual(result.member_count, 2)
         self.assertEqual(result.member_index, 1)
@@ -58,15 +59,15 @@ class ArecaMemberTests(unittest.TestCase):
         handle.write(bytes(4096))
         handle.close()
         self.addCleanup(lambda: os.unlink(handle.name))
-        with self.assertRaises(areca_member.ArecaError):
-            areca_member.inspect(handle.name)
+        with self.assertRaises(ArecaError):
+            inspect(handle.name)
 
     def test_detects_packed_volume_records(self) -> None:
         path = self.make_image()
         with open(path, "r+b") as handle:
             handle.seek(1024 + 128)
             volume = bytearray(128)
-            volume[:8] = areca_member.VOLUME_MAGIC
+            volume[:8] = VOLUME_MAGIC
             struct.pack_into("<I", volume, 8, 4096)
             struct.pack_into("<I", volume, 0x0C, 3815)
             struct.pack_into("<I", volume, 0x14, 4096)
@@ -79,7 +80,7 @@ class ArecaMemberTests(unittest.TestCase):
             volume[0x34:0x44] = b"MULTI-VOL-B\0\0\0\0\0"
             handle.write(volume)
 
-        result = areca_member.inspect(path)
+        result = inspect(path)
         self.assertEqual(len(result.volumes), 2)
         second = result.volumes[1]
         self.assertEqual(second.record_lba, 2)
